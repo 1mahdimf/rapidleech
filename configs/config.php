@@ -3,6 +3,7 @@ if (!defined('RAPIDLEECH')) {
 	require_once('index.html');
 	exit;
 }
+date_default_timezone_set("Asia/Tehran"); 
 $options = array (
   'secretkey' => 'MDMwOTI3ODZlYjA4YTFlODZkMWNlZDUyNzNjZTdlNDUzNDJmYzlkMw==',
   'download_dir' => 'files/',
