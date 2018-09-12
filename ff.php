@@ -1,6 +1,6 @@
 <?php
 /**
- * H3K | Tiny File Manager
+ * H3Kk | Tiny File Manager
  * CCP Programmers
  * http://fb.com/ccpprogrammers
  * https://github.com/prasathmani/tinyfilemanager
