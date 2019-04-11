@@ -12,7 +12,7 @@ $CONFIG = '{"lang":"en","error_reporting":false,"show_hidden":false}';
 define('VERSION', '2.3.5');
 
 // Auth with login/password (set true/false to enable/disable it)
-$use_auth = true;
+$use_auth = false;
 
 // Users: array('Username' => 'Password', 'Username2' => 'Password2', ...)
 // Generate secure password hash - https://tinyfilemanager.github.io/docs/pwd.html
@@ -40,7 +40,7 @@ $highlightjs_style = 'vs';
 $edit_files = true;
 
 // Default timezone for date() and time() - http://php.net/manual/en/timezones.php
-$default_timezone = 'Etc/UTC'; // UTC
+$default_timezone = 'Asia/Tehran'; // UTC
 
 // Root path for file manager
 $root_path = $_SERVER['DOCUMENT_ROOT'];
