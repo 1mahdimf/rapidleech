@@ -1,6 +1,8 @@
 <?php
+@set_time_limit(0);
+@ini_set('max_execution_time', 0);
 //Default Configuration
-$CONFIG = '{"lang":"en","error_reporting":false,"show_hidden":false}';
+$CONFIG = '{"lang":"en","error_reporting":true,"show_hidden":true}';
 
 /**
  * H3K | Tiny File Manager V2.3.5
@@ -17,13 +19,13 @@ $use_auth = false;
 // Users: array('Username' => 'Password', 'Username2' => 'Password2', ...)
 // Generate secure password hash - https://tinyfilemanager.github.io/docs/pwd.html
 $auth_users = array(
-    'admin' => '$2y$10$/K.hjNr84lLNDt8fTXjoI.DBp6PpeyoJ.mGwrrLuCZfAwfSAGqhOW', //admin@123
-    'user' => '$2y$10$Fg6Dz8oH9fPoZ2jJan5tZuv6Z4Kp7avtQ9bDfrdRntXtPeiMAZyGO' //12345
+    'mahdi' => '$2y$10$36To46uFqlQaUOdMfRYGeeIprUnUzw/bKststWtSEnEQkjMNV7Vqq', //admin@123
+
 );
 
 // Readonly users (username array)
 $readonly_users = array(
-    'user'
+  //  'user'
 );
 
 // user specific directories
@@ -43,7 +45,7 @@ $edit_files = true;
 $default_timezone = 'Asia/Tehran'; // UTC
 
 // Root path for file manager
-$root_path = $_SERVER['DOCUMENT_ROOT'];
+$root_path = "/membri/tchr/";
 
 // Root url for links in file manager.Relative to $http_host. Variants: '', 'path/to/subfolder'
 // Will not working if $root_path will be outside of server document root
