@@ -45,7 +45,7 @@ $edit_files = true;
 $default_timezone = 'Asia/Tehran'; // UTC
 
 // Root path for file manager
-$root_path = "/membri/tchr/";
+$root_path = $_SERVER['DOCUMENT_ROOT'];
 
 // Root url for links in file manager.Relative to $http_host. Variants: '', 'path/to/subfolder'
 // Will not working if $root_path will be outside of server document root
@@ -73,7 +73,7 @@ $GLOBALS['online_viewer'] = true;
 $sticky_navbar = true;
 
 //max upload file size
-define('MAX_UPLOAD_SIZE', '2048');
+define('MAX_UPLOAD_SIZE', '800048');
 
 // private key and session name to store to the session
 if ( !defined( 'FM_SESSION_ID')) {
