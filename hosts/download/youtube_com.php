@@ -46,7 +46,10 @@ class youtube_com extends DownloadClass {
 		$v = ($is_dash ? str_split($is_dash) : array('V', substr($this->fmts[$itag], 0, 1)));
 		if ($v) $ext .= $fmtexts[$v[0]][$v[1]];
 
-		if (empty($this->response['title'])) html_error('No video title found! Download halted.');
+		if (empty($this->response['title'])) {
+			if (empty($this->response['player_response']['videoDetails']['title'])) html_error('No video title found! Download halted.');
+			else $this->response['title'] = $this->response['player_response']['videoDetails']['title'];
+		}
 		$filename = str_replace(str_split('\\\:*?"<>|=;'."\t\r\n\f"), '_', html_entity_decode(trim($this->response['title']), ENT_QUOTES));
 		if (!empty($_REQUEST['cleanname'])) $filename = preg_replace('@[^ A-Za-z_\-\d\.,\(\)\[\]\{\}&\!\'\@\%\#]@u', '_', $filename);
 		if (!$is_dash) {
@@ -126,10 +129,11 @@ class youtube_com extends DownloadClass {
 	}
 
 	private function queryVideo($alt = 0) {
-		$this->page = $this->GetPage('https://www.youtube.com/get_video_info?hl=en_US&video_id=' . $this->vid . ($alt ? '&eurl=https%3A%2F%2Fgoogle.com%2F' : '&el=detailpage') .'&sts=' . $this->sts, $this->cookie);
+		$this->page = $this->GetPage('https://www.youtube.com/get_video_info?hl=en_US&video_id=' . $this->vid . ($alt ? '&eurl=https%3A%2F%2Fgoogle.com%2F' : '&el=detailpage') . ($this->sts > 0 ? '&sts=' . $this->sts : ''), $this->cookie);
 		$this->cookie = GetCookiesArr($this->page, $this->cookie);
 		$this->response = array_map('urldecode', $this->FormToArr(substr($this->page, strpos($this->page, "\r\n\r\n") + 4)));
 		if (!empty($this->response['requires_purchase'])) html_error('[Unsupported Video] This Video or Channel Requires a Payment to Watch.');
+		$this->response['player_response'] = json_decode($this->response['player_response'], true);
 	}
 
 	private function getFmtMaps() {
@@ -138,17 +142,26 @@ class youtube_com extends DownloadClass {
 
 		if (!empty($this->response['reason'])) html_error('['.htmlspecialchars($this->response['errorcode']).'] '.htmlspecialchars($this->response['reason']));
 
-		if (in_array(substr($this->page, 9, 3), array('402', '429')) || preg_match('@Location: https?://(www\.)?youtube\.com/das_captcha@i', $this->page)) return $this->captcha();
+		if (!empty($this->response['player_response']['playabilityStatus']['reason'])) html_error('['.htmlspecialchars($this->response['player_response']['playabilityStatus']['reason']).'] '.htmlspecialchars($this->response['player_response']['playabilityStatus']['errorScreen']['playerErrorMessageRenderer']['subreason']['simpleText']));
 
-		if (empty($this->response['url_encoded_fmt_stream_map']) && empty($this->response['adaptive_fmts'])) html_error('[' . $this->sts . '] Video links not found.');
+		if (!empty($this->response['player_response']['streamingData']['formats'])) {
+			$this->response['_formats'] = $this->response['player_response']['streamingData']['formats'];
+		}
+		if (!empty($this->response['player_response']['streamingData']['adaptiveFormats'])) {
+			$this->response['_adaptiveFormats'] = $this->response['player_response']['streamingData']['adaptiveFormats'];
+		}
+
+		if (in_array(substr($this->page, 9, 3), array('402', '429')) || preg_match('@Location: https?://(www\.)?youtube\.com/das_captcha@i', $this->page)) return $this->captcha();
 
 		if (!empty($this->cookie['goojf'])) $this->saveCookie();
 
 		$this->fmtmaps = array();
-		foreach (array('url_encoded_fmt_stream_map', 'adaptive_fmts') as $map) {
+		foreach (array('url_encoded_fmt_stream_map', 'adaptive_fmts', '_formats', '_adaptiveFormats') as $map) {
 			if (empty($this->response[$map])) continue;
-			foreach (explode(',', $this->response[$map]) as $fmt) {
-				$fmt = array_map('urldecode', $this->FormToArr($fmt));
+			if (!is_array($this->response[$map])) $this->response[$map] = explode(',', $this->response[$map]);
+			foreach ($this->response[$map] as $fmt) {
+				if (!is_array($fmt)) $fmt = array_map('urldecode', $this->FormToArr($fmt));
+				if (!empty($fmt['cipher'])) $fmt += array_map('urldecode', $this->FormToArr($fmt['cipher']));
 				if (empty($fmt['itag']) || empty($fmt['url'])) continue;
 				if (!empty($fmt['s']) && empty($this->encS)) {
 					if ($this->sts < 1) return $this->getCipher();
@@ -164,8 +177,8 @@ class youtube_com extends DownloadClass {
 				{
 					if (empty($fmt['url']['query']['signature'])) $fmt['url']['query']['signature'] = $fmt['sig'];
 				}
-				else html_error("Cannot get signature key name");
-				foreach (array_diff(array_keys($fmt), array('signature', 'sig', 's', 'url', 'xtags')) as $k) $fmt['url']['query'][$k] = $fmt[$k];
+				else if (empty($fmt['url']['query']['signature']) && empty($fmt['url']['query']['sig'])) html_error("Cannot get signature key name");
+				foreach (array_diff(array_keys($fmt), array('cipher', 'signature', 'sig', 's', 'url', 'xtags')) as $k) $fmt['url']['query'][$k] = $fmt[$k];
 				if (empty($fmt['url']['query']['ratebypass'])) $fmt['url']['query']['ratebypass'] = 'yes'; // Fix for Slow Downloads of DASH Formats
 				ksort($fmt['url']['query']);
 				$fmt['url']['query'] = http_build_query($fmt['url']['query']);
@@ -174,6 +187,8 @@ class youtube_com extends DownloadClass {
 				$this->fmtmaps[$fmt['itag']] = $fmt;
 			}
 		}
+
+		if (empty($this->fmtmaps)) html_error('[' . $this->sts . '] Video links not found.');
 	}
 
 	private function decError($msg) {
@@ -232,19 +247,31 @@ class youtube_com extends DownloadClass {
 		$page = $this->GetPage('https://www.youtube.com/embed/'.$this->vid, $this->cookie);
 		$this->cookie = GetCookiesArr($page, $this->cookie);
 
-		if (!preg_match('@"sts"\s*:\s*(\d+)@i', $page, $this->sts)) html_error('Signature timestamp not found.');
-		$this->sts = intval($this->sts[1]);
+		if (preg_match('@"sts"\s*:\s*(\d+)@i', $page, $this->sts) && intval($this->sts[1])) {
+			$this->sts = intval($this->sts[1]);
+		}
 
 		$savefile = DOWNLOAD_DIR.'YT_lastjs.txt';
-		if (!preg_match('@/(?:html5)?player[-_]([\w\-\.]+(?:(?:/\w+)?/[\w\-\.]+)?)\.js@i', str_replace('\\/', '/', $page), $this->js)) html_error('YT\'s player javascript not found.');
-		if (@file_exists($savefile) && ($file = file_get_contents($savefile, NULL, NULL, -1, 822)) && ($saved = @unserialize($file)) && is_array($saved) && !empty($saved['sts']) && $saved['sts'] == $this->sts && !empty($saved['steps']) && preg_match('@^\s*([ws]\d+|r)( ([ws]\d+|r))*\s*$@', $saved['steps'])) {
+		if (!preg_match('@/((?:html5)?player[-_][\w\-\.]+(?:(?:/\w+)?/[\w\-\.]+)?)\.js@i', str_replace('\\/', '/', $page), $this->js)) html_error('YT\'s player javascript not found.');
+		if (@file_exists($savefile) && ($file = file_get_contents($savefile, NULL, NULL, -1, 822)) && ($saved = @unserialize($file)) && is_array($saved) && !empty($saved['js']) && !empty($saved['sts']) && !empty($saved['steps']) && ((!$this->sts && $saved['js'] == $this->js[1]) || $saved['sts'] == $this->sts) && preg_match('@^\s*([ws]\d+|r)( ([ws]\d+|r))*\s*$@', $saved['steps'])) {
+			$this->changeMesg('<br />Using cached decoding steps.', 1);
 			$this->encS = explode(' ', trim($saved['steps']));
+			if (empty($this->sts)) $this->sts = $saved['sts'];
 		} else {
+			$this->changeMesg('<br />Loading video player data.', 1);
 			$this->playerJs = $this->GetPage('https://s.ytimg.com/yts/jsbin'.$this->js[0], $this->cookie, 0, 'https://www.youtube.com/embed/'.$this->vid);
-			//if (($spos = strpos($this->playerJs, '.sig||')) === false) $this->decError('Not found (".sig||")');
-			//if (($cut1 = cut_str(substr($this->playerJs, $spos), '{', '}')) == false) $this->decError('Cannot get inner content of "if(X.sig||X.s)"');
 			$v = '[\$_A-Za-z][\$\w]*';
 			$v3 = '[\$_A-Za-z][\$\w]{3,}';
+			if (empty($this->sts)) {
+				if (preg_match('@\bsts\s*:\s*(\d+)@i', $this->playerJs, $sts)) {
+					$this->sts = intval($sts[1]);
+			} else if (preg_match("@\bsts\s*:\s*($v)@", $this->playerJs, $sts) && preg_match("@(?:var\s+|[,{}])\s*{$sts[1]}\s*[=:]\s*([1-9]\d*|\d\d+)@", $this->playerJs, $sts2)) {
+					$this->sts = intval($sts2[1]);
+				}
+				if (empty($this->sts)) html_error('Signature TimeStamp not found.');
+			}
+			//if (($spos = strpos($this->playerJs, '.sig||')) === false) $this->decError('Not found (".sig||")');
+			//if (($cut1 = cut_str(substr($this->playerJs, $spos), '{', '}')) == false) $this->decError('Cannot get inner content of "if(X.sig||X.s)"');
 			if (!preg_match("@(?:\.sig\|\||\.set\(\"signature\",|\|\"signature\",|$v\.sp,)(?:\(0,$v(?:\.$v)*\)\(|$v3\()?($v)\((?:\(0,$v(?:\.$v)*\)\(|$v3\()?$v\.s\)@", $this->playerJs, $fn)) $this->decError('Cannot get decoder function name');
 			$fn = preg_quote($fn[1], '@');
 			if (!preg_match("@(?:function\s+$fn\s*\(|var\s+$fn\s*=\s*function\s*\(|(?<=(?:{|,|;))\s*$fn\s*=\s*function\s*\()@", $this->playerJs, $fpos, PREG_OFFSET_CAPTURE)) $this->decError('Cannot find decoder function');
@@ -261,7 +288,7 @@ class youtube_com extends DownloadClass {
 			}
 
 			if (empty($this->encS)) $this->decError('Empty decoded result');
-			file_put_contents($savefile, serialize(array('sts' => $this->sts, 'js' => $this->js[1], 'steps' => implode(' ', $this->encS))));
+			file_put_contents($savefile, serialize(array('js' => $this->js[1], 'sts' => $this->sts, 'steps' => implode(' ', $this->encS))));
 		}
 
 		// Request video fmts with the current sts
@@ -318,9 +345,9 @@ class youtube_com extends DownloadClass {
 				if (($I = explode('|', $this->fmts[$itag]))) printf("<option value='%d'>[%1\$d] Video: %s %dp | Audio: %s ~%d Kbps%s</option>\n", $itag, $C['V'][$I[0]], $I[1], $C['A'][$I[2]], $I[3], $size);
 			} else if (!empty($this->dashfmts[$itag])) {
 				if (($I = str_split($this->dashfmts[$itag]))) {
-					$size = (!empty($fmt['clen']) ? ' ('.bytesToKbOrMbOrGb($fmt['clen']).')' : '');
-					if ($I[0] == 'V' || $I[0] == 'v') printf("<option value='%d'>[%1\$d] Video only: %s @ %s%s</option>\n", $itag, $C['V'][$I[1]], $fmt['quality_label'], $size);
-					else printf("<option value='%d'>[%1\$d] Audio only: %s @ ~%s%s</option>\n", $itag, $C['A'][$I[1]], $this->bitrate2KMG($fmt['bitrate']), $size);
+					$size = (!empty($fmt['contentLength']) ? ' ('.bytesToKbOrMbOrGb($fmt['contentLength']).')' : (!empty($fmt['clen']) ? ' ('.bytesToKbOrMbOrGb($fmt['clen']).')' : ''));
+					if ($I[0] == 'V' || $I[0] == 'v') printf("<option value='%d'>[%1\$d] Video only: %s @ %s%s</option>\n", $itag, $C['V'][$I[1]], (!empty($fmt['qualityLabel']) ? $fmt['qualityLabel'] : $fmt['quality_label']), $size);
+					else printf("<option value='%d'>[%1\$d] Audio only: %s @ ~%s%s</option>\n", $itag, $C['A'][$I[1]], $this->bitrate2KMG((!empty($fmt['averageBitrate']) ? $fmt['averageBitrate'] : $fmt['bitrate'])), $size);
 				}
 			}
 		}
@@ -366,3 +393,6 @@ class youtube_com extends DownloadClass {
 // [03-2-2019]  Fixed signature decoding functions. - Th3-822
 // [25-5-2019]  Fixed embed JS regex. - Th3-822
 // [19-6-2019]  Fixed signature key name. - Th3-822
+// [10-7-2019]  Fixed signature search and related functions. - Th3-822
+// [27-8-2019]  Fixed video title code. - Th3-822
+// [04-1-2020]  Fixed fmts handling & Fixed signature search. - Th3-822
